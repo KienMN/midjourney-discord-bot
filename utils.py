@@ -93,8 +93,27 @@ async def main(bot_command: str, channel_url: str, PROMPTS: list[str]):
             for i in range(len(PROMPTS)):
                 prompt = PROMPTS[i]
                 logger.info("Entering the specified bot command.")
-                await send_bot_command(page, bot_command, prompt, sequence_number=i + 1)
+                await send_bot_command(page, bot_command)
+                asyncio.sleep(random.randint(1, 5))
 
+                logger.info("Generating prompt using OpenAI's API.")
+                await generate_prompt_and_submit_command(page, prompt)
+                asyncio.sleep(random.randint(1, 5))
+
+                logger.info("Wait and select upscale options.")
+                await wait_and_select_upscale_options(
+                    page,
+                    number_of_images=int(os.environ.get("NUMBER_OF_UPSCALED_IMAGES")),
+                )
+                asyncio.sleep(random.randint(1, 5))
+
+                logger.info("Download upscaled images.")
+                await download_upscaled_images(
+                    page,
+                    prompt,
+                    number_of_images=int(os.environ.get("NUMBER_OF_UPSCALED_IMAGES")),
+                    sequence_number=i + 1,
+                )
 
                 logger.info(f"Iteration {i+1} completed.")
                 random_sleep()
@@ -136,24 +155,22 @@ async def open_discord_channel(page, channel_url: str):
         raise e
 
 
-async def send_bot_command(
-    page, command: str, PROMPT: str, sequence_number: int = None
-):
+async def send_bot_command(page, command: str):
     """
     Function to send a command to the bot in the chat bar.
 
     Parameters:
     - page: The page object representing the current browser context.
     - command (str): The command to send to the bot.
-    - PROMPT (str): The prompt for the command.
 
     Returns:
     - None
     """
     try:
         logger.info("Clicking on chat bar.")
-        # chat_bar = page.get_by_role("textbox", name="Message #test-text-channel")
-        chat_bar = page.get_by_role("textbox", name="Nhắn #việt-hưng")
+        chat_bar = page.get_by_role(
+            "textbox", name=os.environ.get("DISCORD_CHANNEL_MESSAGE_PLACEHOLDER")
+        )
         await asyncio.sleep(random.randint(1, 5))
 
         logger.info("Typing in bot command")
@@ -169,19 +186,16 @@ async def send_bot_command(
         await asyncio.sleep(random.randint(1, 5))
         await prompt_option.click()
 
-        logger.info("Generating prompt using OpenAI's API.")
-        await generate_prompt_and_submit_command(page, PROMPT, sequence_number)
-
     except Exception as e:
         logger.exception(f"An error occurred while sending the bot command: {e}")
         raise e
 
 
-async def generate_prompt_and_submit_command(
-    page, prompt: str, sequence_number: int = None
-):
+async def generate_prompt_and_submit_command(page, prompt: str):
     try:
+        # TODO: Generate midjourney prompt using ChatGPT
         # prompt_text = gpt3_midjourney_prompt(prompt)
+
         prompt_text = prompt
         await asyncio.sleep(random.randint(1, 5))
         pill_value_locator = "span.optionPillValue__1464f"
@@ -189,7 +203,6 @@ async def generate_prompt_and_submit_command(
         await asyncio.sleep(random.randint(1, 5))
         await page.keyboard.press("Enter")
         logger.info(f"Successfully submitted prompt: {prompt_text}")
-        await wait_and_select_upscale_options(page, prompt_text, sequence_number)
     except Exception as e:
         logger.error(f"An error occurred while submitting the prompt: {e}")
         raise e
@@ -253,21 +266,18 @@ def gpt3_midjourney_prompt(
         raise e
 
 
-async def wait_and_select_upscale_options(
-    page, prompt_text: str, sequence_number: int = None
-):
+async def wait_and_select_upscale_options(page, number_of_images: int = 1):
     """
     Function to wait for and select upscale options.
 
     Parameters:
     - page: The page to operate on.
-    - prompt_text (str): The text of the prompt.
 
     Returns:
     - None
     """
     try:
-        prompt_text = prompt_text.lower()
+        # prompt_text = prompt_text.lower()
 
         # Repeat until upscale options are found
         while True:
@@ -278,23 +288,27 @@ async def wait_and_select_upscale_options(
                 logger.info(
                     "Found upscale options. Attempting to upscale all generated images."
                 )
-                random_selection = random.choice(["U1", "U2", "U3", "U4"])
+
+                random_selection = random.sample(
+                    ["U1", "U2", "U3", "U4"], number_of_images
+                )
+
                 try:
-                    await select_upscale_option(page, random_selection)
-                    time.sleep(random.randint(10, 20))
-                    # await select_upscale_option(page, "U2")
-                    # time.sleep(random.randint(3, 5))
-                    # await select_upscale_option(page, "U3")
-                    # time.sleep(random.randint(3, 5))
-                    # await select_upscale_option(page, "U4")
-                    # time.sleep(random.randint(3, 5))
+                    for selection in random_selection:
+                        await select_upscale_option(page, selection)
+                        await asyncio.sleep(random.randint(5, 10))
+                        # await select_upscale_option(page, "U2")
+                        # time.sleep(random.randint(3, 5))
+                        # await select_upscale_option(page, "U3")
+                        # time.sleep(random.randint(3, 5))
+                        # await select_upscale_option(page, "U4")
+                        # time.sleep(random.randint(3, 5))
                 except Exception as e:
                     logger.error(
                         f"An error occurred while selecting upscale options: {e}"
                     )
                     raise e
 
-                await download_upscaled_images(page, prompt_text, sequence_number=sequence_number)
                 break  # Exit the loop when upscale options have been found and selected
 
             else:
@@ -385,7 +399,7 @@ async def download_upscaled_images(
                 image_elements = await page.query_selector_all(".originalLink_af017a")
                 last_four_images = image_elements[-number_of_images:]
 
-                for image in last_four_images:
+                for i, image in enumerate(last_four_images):
                     src = await image.get_attribute("href")
                     url = src
                     if not sequence_number:
@@ -395,7 +409,9 @@ async def download_upscaled_images(
                         response = response.replace("\n\n", "_")
                         response = response[:50].rstrip(". ") + str(uuid.uuid1())
                     else:
-                        response = f"pic_{sequence_number}"
+                        response = (
+                            f"pic_{sequence_number}_{i + 1}_of_{number_of_images}"
+                        )
 
                     download_response = requests.get(url, stream=True)
 
