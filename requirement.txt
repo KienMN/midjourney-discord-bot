@@ -3,3 +3,4 @@ loguru==0.7.3
 pytest-playwright==0.7.0
 openai==1.65.4
 dotenv==0.9.9
+PyQt6==6.8.1

@@ -22,7 +22,8 @@ if __name__ == "__main__":
     with open("prompts.txt", "r") as f:
         line = f.readline()
         while line:
-            PROMPTS.append(line.strip())
+            if line.strip():
+                PROMPTS.append(line.strip())
             line = f.readline()
 
     print(PROMPTS)

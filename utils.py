@@ -14,7 +14,7 @@ from playwright.async_api import Page, async_playwright
 
 def random_sleep():
     """Sleep for a random amount of time between 1 and 5 seconds."""
-    time.sleep(random.randint(50, 60))
+    time.sleep(random.randint(20, 30))
 
 
 async def open_isolated_browser(bot_command: str, channel_url: str, PROMPT: str):
@@ -171,11 +171,11 @@ async def send_bot_command(page, command: str):
         chat_bar = page.get_by_role(
             "textbox", name=os.environ.get("DISCORD_CHANNEL_MESSAGE_PLACEHOLDER")
         )
-        await asyncio.sleep(random.randint(1, 5))
+        await asyncio.sleep(random.randint(1, 3))
 
         logger.info("Typing in bot command")
         await chat_bar.fill(command)
-        await asyncio.sleep(random.randint(1, 5))
+        # await asyncio.sleep(random.randint(1, 3))
 
         logger.info("Selecting the prompt option in the suggestions menu")
         prompt_option_selector = "#autocomplete-0 > .base__13533"
@@ -183,7 +183,7 @@ async def send_bot_command(page, command: str):
             prompt_option_selector, state="visible", timeout=10000
         )
         prompt_option = page.locator(prompt_option_selector)
-        await asyncio.sleep(random.randint(1, 5))
+        await asyncio.sleep(random.randint(1, 3))
         await prompt_option.click()
 
     except Exception as e:
@@ -197,10 +197,10 @@ async def generate_prompt_and_submit_command(page, prompt: str):
         # prompt_text = gpt3_midjourney_prompt(prompt)
 
         prompt_text = prompt
-        await asyncio.sleep(random.randint(1, 5))
+        # await asyncio.sleep(random.randint(1, 5))
         pill_value_locator = "span.optionPillValue__1464f"
         await page.fill(pill_value_locator, prompt_text)
-        await asyncio.sleep(random.randint(1, 5))
+        await asyncio.sleep(random.randint(1, 3))
         await page.keyboard.press("Enter")
         logger.info(f"Successfully submitted prompt: {prompt_text}")
     except Exception as e:
@@ -278,8 +278,8 @@ async def wait_and_select_upscale_options(page, number_of_images: int = 1):
     """
     try:
         # prompt_text = prompt_text.lower()
-
         # Repeat until upscale options are found
+        timeout = int(os.environ.get("WAIT_FOR_UPSCALE_TIMEOUT", 120))
         while True:
             last_message = await get_last_message(page)
 
@@ -314,6 +314,57 @@ async def wait_and_select_upscale_options(page, number_of_images: int = 1):
             else:
                 logger.info("Upscale options not yet available, waiting...")
                 await asyncio.sleep(10)
+                timeout -= 10
+                if timeout <= 0:
+                    raise TimeoutError("Timeout while waiting for upscale options.")
+
+    except Exception as e:
+        logger.error(f"An error occurred while finding the last message: {e}")
+        raise e
+
+
+async def wait_and_select_super_upscale_options(page, number_of_images: int = 1):
+    """
+    Function to wait for and select upscale options.
+
+    Parameters:
+    - page: The page to operate on.
+
+    Returns:
+    - None
+    """
+    try:
+        # Repeat until upscale options are found
+        timeout = int(os.environ.get("WAIT_FOR_UPSCALE_TIMEOUT", 120))
+        while True:
+            last_message = await get_last_message(page)
+
+            # Check for 'Upscale' in the last message
+            if "Upscale (Subtle)" in last_message:
+                logger.info(
+                    "Found upscale options. Attempting to upscale generated images."
+                )
+
+                random_selection = random.sample(["Upscale (Subtle)"], number_of_images)
+
+                try:
+                    for selection in random_selection:
+                        await select_upscale_option(page, selection)
+                        await asyncio.sleep(random.randint(5, 10))
+                except Exception as e:
+                    logger.error(
+                        f"An error occurred while selecting upscale options: {e}"
+                    )
+                    raise e
+
+                break  # Exit the loop when upscale options have been found and selected
+
+            else:
+                logger.info("Upscale options not yet available, waiting...")
+                await asyncio.sleep(10)
+                timeout -= 10
+                if timeout <= 0:
+                    raise TimeoutError("Timeout while waiting for upscale options.")
 
     except Exception as e:
         logger.error(f"An error occurred while finding the last message: {e}")
@@ -381,7 +432,12 @@ async def select_upscale_option(page, option_text: str):
 
 
 async def download_upscaled_images(
-    page, prompt_text: str, number_of_images=1, sequence_number: int = None
+    page,
+    prompt_text: str,
+    number_of_images=1,
+    sequence_number: int = None,
+    output_dir: str = None,
+    timeout: int = 600,
 ):
     try:
         messages = await page.query_selector_all(".messageListItem__5126c")
@@ -408,14 +464,18 @@ async def download_upscaled_images(
                         response = re.sub(r'[\<>:"/|?*]', "", response)
                         response = response.replace("\n\n", "_")
                         response = response[:50].rstrip(". ") + str(uuid.uuid1())
-                    else:
+                    elif number_of_images > 1:
                         response = (
                             f"pic_{sequence_number}_{i + 1}_of_{number_of_images}"
                         )
+                    else:
+                        response = f"pic_{sequence_number}"
 
                     download_response = requests.get(url, stream=True)
 
-                    with open(f"{str(response)}.png", "wb") as out_file:
+                    with open(
+                        f"{output_dir or "."}/{str(response)}.png", "wb"
+                    ) as out_file:
                         shutil.copyfileobj(download_response.raw, out_file)
                     del download_response
 
@@ -423,7 +483,16 @@ async def download_upscaled_images(
                 logger.info(f"An error occurred while downloading the images: {e}")
 
         else:
-            await download_upscaled_images(page, prompt_text)
+            await asyncio.sleep(10)
+            timeout -= 10
+            if timeout <= 0:
+                raise TimeoutError("Timeout while waiting for images to be available.")
+            if timeout % 60 == 0:
+                logger.info("Images not yet available, waiting...")
+
+            await download_upscaled_images(
+                page, prompt_text, number_of_images, sequence_number, output_dir
+            )
 
     except Exception as e:
         logger.info(f"An error occurred while finding the last message: {e}")
