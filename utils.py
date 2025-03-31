@@ -483,15 +483,19 @@ async def download_upscaled_images(
                 logger.info(f"An error occurred while downloading the images: {e}")
 
         else:
-            await asyncio.sleep(10)
-            timeout -= 10
             if timeout <= 0:
                 raise TimeoutError("Timeout while waiting for images to be available.")
             if timeout % 60 == 0:
-                logger.info("Images not yet available, waiting...")
-
+                logger.info(f"Images not yet available, waiting... Timeout after {timeout}")
+            
+            await asyncio.sleep(10)
             await download_upscaled_images(
-                page, prompt_text, number_of_images, sequence_number, output_dir
+                page,
+                prompt_text,
+                number_of_images,
+                sequence_number,
+                output_dir,
+                timeout - 10,
             )
 
     except Exception as e:
