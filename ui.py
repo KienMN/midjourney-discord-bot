@@ -66,7 +66,7 @@ def configure_logging():
 
 class FileProcessor(QThread):
     progress = pyqtSignal(int)
-    completed = pyqtSignal()
+    completed = pyqtSignal(str, str)  # Changed to include status (title, message)
 
     def __init__(self, input_file, output_dir, upscale):
         super().__init__()
@@ -92,10 +92,10 @@ class FileProcessor(QThread):
                 )  # Run the async function inside the thread
             else:
                 logger.error("No prompts found in the input file.")
-                self.completed.emit()
+                self.completed.emit("⚠️ Error", "No prompts found in the input file.")
         except Exception as e:
             logger.exception("Error in FileProcessor.run()")  # This will log the full traceback
-            self.completed.emit()
+            self.completed.emit("❌ Error", f"An error occurred: {str(e)}")
 
     async def process_file_async(self):
         try:
@@ -148,11 +148,12 @@ class FileProcessor(QThread):
                     self.progress.emit((i + 1) * 100 // total_prompts)
                     
                     if i + 1 == total_prompts:
-                        self.completed.emit()
+                        self.completed.emit("✅ Success", "All images have been processed successfully!")
                     random_sleep()
 
         except Exception as e:
-            logger.error(f"Error occurred: {e} while executing the main function.")
+            # logger.error(f"Error occurred: {e} while executing the main function.")
+            # self.completed.emit("❌ Error", f"An error occurred while processing: {str(e)}")
             raise e
         finally:
             if browser:
@@ -249,8 +250,12 @@ class TextFileProcessorApp(QWidget):
         self.processor.completed.connect(self.on_processing_done)
         self.processor.start()
 
-    def on_processing_done(self):
-        QMessageBox.information(self, "✅ Done", "Processing completed successfully!")
+    def on_processing_done(self, title, message):
+        """Show the final status message."""
+        if "Error" in title:
+            QMessageBox.critical(self, title, message)
+        else:
+            QMessageBox.information(self, title, message)
 
     def load_styles(self):
         return """
