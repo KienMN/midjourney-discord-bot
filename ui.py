@@ -4,7 +4,7 @@ import random
 import sys
 from datetime import datetime
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv, set_key
 from loguru import logger
 from playwright.async_api import async_playwright
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
@@ -13,9 +13,11 @@ from PyQt6.QtWidgets import (
     QCheckBox,
     QFileDialog,
     QLabel,
+    QLineEdit,
     QMessageBox,
     QProgressBar,
     QPushButton,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
@@ -170,6 +172,60 @@ class FileProcessor(QThread):
             out_file.write(content)
 
 
+class SettingsTab(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout()
+
+        # Discord Channel URL
+        url_label = QLabel("Discord Channel URL:")
+        self.url_input = QLineEdit()
+        self.url_input.setPlaceholderText("Enter Discord channel URL")
+        self.url_input.setText(os.environ.get("DISCORD_CHANNEL_URL", ""))
+
+        # Discord Channel Message Placeholder
+        placeholder_label = QLabel("Discord Channel Message Placeholder:")
+        self.placeholder_input = QLineEdit()
+        self.placeholder_input.setPlaceholderText("Enter message placeholder (e.g., 'Message #channel')")
+        self.placeholder_input.setText(os.environ.get("DISCORD_CHANNEL_MESSAGE_PLACEHOLDER", ""))
+
+        # Save button
+        self.save_button = QPushButton("💾 Save Settings")
+        self.save_button.clicked.connect(self.save_settings)
+
+        layout.addWidget(url_label)
+        layout.addWidget(self.url_input)
+        layout.addWidget(placeholder_label)
+        layout.addWidget(self.placeholder_input)
+        layout.addWidget(self.save_button)
+        layout.addStretch()
+
+        self.setLayout(layout)
+
+    def save_settings(self):
+        """Save settings to .env file."""
+        try:
+            # Get the values from the input fields
+            channel_url = self.url_input.text().strip()
+            message_placeholder = self.placeholder_input.text().strip()
+
+            # Update environment variables
+            set_key('.env', 'DISCORD_CHANNEL_URL', channel_url)
+            set_key('.env', 'DISCORD_CHANNEL_MESSAGE_PLACEHOLDER', message_placeholder)
+
+            # Reload environment variables
+            load_dotenv(override=True)
+
+            QMessageBox.information(self, "✅ Success", "Settings saved successfully!")
+            logger.info("Settings updated successfully")
+        except Exception as e:
+            logger.error(f"Error saving settings: {e}")
+            QMessageBox.critical(self, "❌ Error", f"Failed to save settings: {str(e)}")
+
+
 class TextFileProcessorApp(QWidget):
     def __init__(self):
         super().__init__()
@@ -177,31 +233,133 @@ class TextFileProcessorApp(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        self.setWindowTitle("📄 Midjourney bot")
-        self.setGeometry(400, 200, 450, 400)
+        self.setWindowTitle("📄 Midjourney Bot")
+        self.setGeometry(400, 200, 700, 600)  # Increased window size
         self.setStyleSheet(self.load_styles())
 
-        layout = QVBoxLayout()
+        # Create tab widget
+        self.tabs = QTabWidget()
+        
+        # Create main tab
+        main_tab = QWidget()
+        main_layout = QVBoxLayout()
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(20, 20, 20, 20)
 
-        self.label_input = QLabel("📂 No input file selected")
-        self.label_output = QLabel("📁 No output directory selected")
-
+        # Input section
+        input_group = QWidget()
+        input_layout = QVBoxLayout()
+        input_layout.setSpacing(5)
+        
+        self.label_input = QLabel("📂 Input File")
+        self.label_input.setStyleSheet("font-size: 16px; font-weight: bold;")
         self.btn_select_input = QPushButton("📑 Select Input File")
+        self.btn_select_input.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
+
+        input_layout.addWidget(self.label_input)
+        input_layout.addWidget(self.btn_select_input)
+        input_group.setLayout(input_layout)
+
+        # Output section
+        output_group = QWidget()
+        output_layout = QVBoxLayout()
+        output_layout.setSpacing(5)
+        
+        self.label_output = QLabel("📁 Output Directory")
+        self.label_output.setStyleSheet("font-size: 16px; font-weight: bold;")
         self.btn_select_output = QPushButton("📂 Select Output Directory")
-        self.btn_discard = QPushButton("🗑️ Discard Selection")
-        self.chk_upscale = QCheckBox("🔼 Enable Upscale Mode")  # Upscale mode checkbox
+        self.btn_select_output.setStyleSheet("""
+            QPushButton {
+                background-color: #2196F3;
+            }
+            QPushButton:hover {
+                background-color: #0b7dda;
+            }
+        """)
+
+        output_layout.addWidget(self.label_output)
+        output_layout.addWidget(self.btn_select_output)
+        output_group.setLayout(output_layout)
+
+        # Options section
+        options_group = QWidget()
+        options_layout = QVBoxLayout()
+        options_layout.setSpacing(10)
+        
+        self.chk_upscale = QCheckBox("🔼 Enable Upscale Mode")
+        self.chk_upscale.setStyleSheet("font-size: 14px;")
+
+        options_layout.addWidget(self.chk_upscale)
+        options_group.setLayout(options_layout)
+
+        # Action buttons
+        action_group = QWidget()
+        action_layout = QVBoxLayout()
+        action_layout.setSpacing(10)
+        
         self.btn_process = QPushButton("🚀 Process File")
+        self.btn_process.setStyleSheet("""
+            QPushButton {
+                background-color: #FF9800;
+                font-size: 16px;
+                padding: 12px;
+            }
+            QPushButton:hover {
+                background-color: #F57C00;
+            }
+        """)
+        
+        self.btn_discard = QPushButton("🗑️ Clear Selection")
+        self.btn_discard.setStyleSheet("""
+            QPushButton {
+                background-color: #F44336;
+            }
+            QPushButton:hover {
+                background-color: #d32f2f;
+            }
+        """)
+
+        action_layout.addWidget(self.btn_process)
+        action_layout.addWidget(self.btn_discard)
+        action_group.setLayout(action_layout)
+
+        # Progress bar
         self.progress_bar = QProgressBar()
+        self.progress_bar.setStyleSheet("""
+            QProgressBar {
+                height: 25px;
+                font-size: 14px;
+            }
+        """)
 
-        layout.addWidget(self.label_input)
-        layout.addWidget(self.btn_select_input)
-        layout.addWidget(self.label_output)
-        layout.addWidget(self.btn_select_output)
-        layout.addWidget(self.btn_discard)
-        layout.addWidget(self.chk_upscale)
-        layout.addWidget(self.btn_process)
-        layout.addWidget(self.progress_bar)
+        # Add all sections to main layout
+        main_layout.addWidget(input_group)
+        main_layout.addWidget(output_group)
+        main_layout.addWidget(options_group)
+        main_layout.addWidget(action_group)
+        main_layout.addWidget(self.progress_bar)
+        main_layout.addStretch()
 
+        main_tab.setLayout(main_layout)
+
+        # Create settings tab
+        settings_tab = SettingsTab()
+
+        # Add tabs to tab widget
+        self.tabs.addTab(main_tab, "🖼️ Main")
+        self.tabs.addTab(settings_tab, "⚙️ Settings")
+
+        # Create main layout
+        layout = QVBoxLayout()
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.addWidget(self.tabs)
         self.setLayout(layout)
 
         # Connect Buttons
@@ -259,65 +417,146 @@ class TextFileProcessorApp(QWidget):
 
     def load_styles(self):
         return """
+        /* Main Window */
         QWidget {
             background-color: #2E2E2E;
             color: #E0E0E0;
-            font-family: Arial;
+            font-family: 'Segoe UI', Arial;
             font-size: 14px;
         }
+
+        /* Tab Widget */
+        QTabWidget::pane {
+            border: 1px solid #444;
+            border-radius: 6px;
+            background-color: #2E2E2E;
+        }
+
+        QTabWidget::tab-bar {
+            alignment: center;
+        }
+
+        QTabBar::tab {
+            background-color: #3E3E3E;
+            color: #E0E0E0;
+            padding: 8px 20px;
+            margin: 2px;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+
+        QTabBar::tab:selected {
+            background-color: #0078D7;
+            color: white;
+        }
+
+        QTabBar::tab:hover:!selected {
+            background-color: #4E4E4E;
+        }
+
+        /* Labels */
         QLabel {
             font-size: 14px;
-            padding: 5px;
+            padding: 8px;
+            color: #E0E0E0;
         }
+
+        /* Line Edits */
+        QLineEdit {
+            background-color: #3E3E3E;
+            color: #E0E0E0;
+            border: 1px solid #555;
+            border-radius: 4px;
+            padding: 8px;
+            margin: 4px;
+            selection-background-color: #0078D7;
+        }
+
+        QLineEdit:focus {
+            border: 1px solid #0078D7;
+        }
+
+        /* Buttons */
         QPushButton {
             background-color: #0078D7;
             color: white;
-            border-radius: 8px;
-            padding: 10px;
+            border: none;
+            border-radius: 4px;
+            padding: 10px 20px;
+            margin: 4px;
             font-size: 14px;
+            font-weight: bold;
         }
+
         QPushButton:hover {
             background-color: #005A9E;
         }
+
         QPushButton:pressed {
             background-color: #004080;
         }
+
         QPushButton#discard {
             background-color: #D9534F;
         }
+
         QPushButton#discard:hover {
             background-color: #C9302C;
         }
+
+        /* Progress Bar */
         QProgressBar {
             border: 2px solid #555;
-            border-radius: 5px;
+            border-radius: 4px;
             text-align: center;
-            background-color: #444;
+            background-color: #3E3E3E;
             height: 20px;
+            margin: 8px;
         }
+
         QProgressBar::chunk {
             background-color: #00BCF2;
             width: 10px;
+            border-radius: 2px;
         }
+
+        /* Checkbox */
         QCheckBox {
             font-size: 14px;
             color: #E0E0E0;
-            padding: 5px;
+            padding: 8px;
+            spacing: 8px;
         }
+
         QCheckBox::indicator {
-            width: 16px;
-            height: 16px;
+            width: 18px;
+            height: 18px;
             border-radius: 4px;
-            background-color: #444;
-            border: 2px solid #888;
+            background-color: #3E3E3E;
+            border: 2px solid #555;
         }
+
         QCheckBox::indicator:checked {
             background-color: #00BCF2;
             border: 2px solid #00A0D2;
+            image: url(check.png);
         }
+
+        QCheckBox::indicator:hover {
+            border: 2px solid #0078D7;
+        }
+
+        /* Message Box */
         QMessageBox {
-            background-color: #3E3E3E;
+            background-color: #2E2E2E;
+        }
+
+        QMessageBox QLabel {
             color: #E0E0E0;
+        }
+
+        QMessageBox QPushButton {
+            min-width: 80px;
         }
         """
 
