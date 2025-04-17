@@ -175,35 +175,96 @@ class FileProcessor(QThread):
 class SettingsTab(QWidget):
     def __init__(self):
         super().__init__()
+        self.env_file = '.env'
         self.init_ui()
+        self.load_settings()
 
     def init_ui(self):
         layout = QVBoxLayout()
+        layout.setSpacing(15)
+        layout.setContentsMargins(20, 20, 20, 20)
 
         # Discord Channel URL
+        url_group = QWidget()
+        url_layout = QVBoxLayout()
+        url_layout.setSpacing(5)
+        
         url_label = QLabel("Discord Channel URL:")
+        url_label.setStyleSheet("font-size: 14px; font-weight: bold;")
         self.url_input = QLineEdit()
-        self.url_input.setPlaceholderText("Enter Discord channel URL")
-        self.url_input.setText(os.environ.get("DISCORD_CHANNEL_URL", ""))
+        self.url_input.setPlaceholderText("Enter Discord channel URL (e.g., https://discord.com/channels/...)")
+        self.url_input.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                font-size: 14px;
+            }
+        """)
+
+        url_layout.addWidget(url_label)
+        url_layout.addWidget(self.url_input)
+        url_group.setLayout(url_layout)
 
         # Discord Channel Message Placeholder
+        placeholder_group = QWidget()
+        placeholder_layout = QVBoxLayout()
+        placeholder_layout.setSpacing(5)
+        
         placeholder_label = QLabel("Discord Channel Message Placeholder:")
+        placeholder_label.setStyleSheet("font-size: 14px; font-weight: bold;")
         self.placeholder_input = QLineEdit()
         self.placeholder_input.setPlaceholderText("Enter message placeholder (e.g., 'Message #channel')")
-        self.placeholder_input.setText(os.environ.get("DISCORD_CHANNEL_MESSAGE_PLACEHOLDER", ""))
+        self.placeholder_input.setStyleSheet("""
+            QLineEdit {
+                padding: 8px;
+                font-size: 14px;
+            }
+        """)
+
+        placeholder_layout.addWidget(placeholder_label)
+        placeholder_layout.addWidget(self.placeholder_input)
+        placeholder_group.setLayout(placeholder_layout)
 
         # Save button
+        button_group = QWidget()
+        button_layout = QVBoxLayout()
+        button_layout.setSpacing(10)
+        
         self.save_button = QPushButton("💾 Save Settings")
+        self.save_button.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                padding: 10px;
+                font-size: 14px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+        """)
         self.save_button.clicked.connect(self.save_settings)
 
-        layout.addWidget(url_label)
-        layout.addWidget(self.url_input)
-        layout.addWidget(placeholder_label)
-        layout.addWidget(self.placeholder_input)
-        layout.addWidget(self.save_button)
+        button_layout.addWidget(self.save_button)
+        button_group.setLayout(button_layout)
+
+        # Add all groups to main layout
+        layout.addWidget(url_group)
+        layout.addWidget(placeholder_group)
+        layout.addWidget(button_group)
         layout.addStretch()
 
         self.setLayout(layout)
+
+    def load_settings(self):
+        """Load settings from .env file."""
+        try:
+            if os.path.exists(self.env_file):
+                load_dotenv(self.env_file)
+                self.url_input.setText(os.environ.get("DISCORD_CHANNEL_URL", ""))
+                self.placeholder_input.setText(os.environ.get("DISCORD_CHANNEL_MESSAGE_PLACEHOLDER", ""))
+                logger.info("Settings loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading settings: {e}")
+            QMessageBox.critical(self, "❌ Error", f"Failed to load settings: {str(e)}")
 
     def save_settings(self):
         """Save settings to .env file."""
@@ -212,12 +273,25 @@ class SettingsTab(QWidget):
             channel_url = self.url_input.text().strip()
             message_placeholder = self.placeholder_input.text().strip()
 
+            # Validate inputs
+            if not channel_url:
+                QMessageBox.warning(self, "⚠️ Warning", "Discord Channel URL cannot be empty!")
+                return
+            if not message_placeholder:
+                QMessageBox.warning(self, "⚠️ Warning", "Message Placeholder cannot be empty!")
+                return
+
+            # Create .env file if it doesn't exist
+            if not os.path.exists(self.env_file):
+                with open(self.env_file, 'w') as f:
+                    f.write('')
+
             # Update environment variables
-            set_key('.env', 'DISCORD_CHANNEL_URL', channel_url)
-            set_key('.env', 'DISCORD_CHANNEL_MESSAGE_PLACEHOLDER', message_placeholder)
+            set_key(self.env_file, 'DISCORD_CHANNEL_URL', channel_url)
+            set_key(self.env_file, 'DISCORD_CHANNEL_MESSAGE_PLACEHOLDER', message_placeholder)
 
             # Reload environment variables
-            load_dotenv(override=True)
+            load_dotenv(self.env_file, override=True)
 
             QMessageBox.information(self, "✅ Success", "Settings saved successfully!")
             logger.info("Settings updated successfully")
