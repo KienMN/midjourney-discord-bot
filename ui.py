@@ -92,6 +92,7 @@ class FileProcessor(QThread):
                 asyncio.run(
                     self.process_file_async()
                 )  # Run the async function inside the thread
+                self.completed.emit("✅ Success", "All images have been processed successfully!")
             else:
                 logger.error("No prompts found in the input file.")
                 self.completed.emit("⚠️ Error", "No prompts found in the input file.")
@@ -102,64 +103,79 @@ class FileProcessor(QThread):
     async def process_file_async(self):
         try:
             total_prompts = len(self.PROMPTS)
-            browser = None
+            page = None
             async with async_playwright() as p:
                 browser = await p.chromium.connect_over_cdp("http://localhost:9222")
-                default_context = browser.contexts[0]
-                page = await default_context.new_page()
+                try:
+                    default_context = browser.contexts[0]
+                    page = await default_context.new_page()
 
-                await open_discord_channel(page, self.channel_url)
+                    await open_discord_channel(page, self.channel_url)
 
-                for i in range(total_prompts):
-                    prompt = self.PROMPTS[i]
-                    logger.info("Entering the specified bot command.")
-                    await send_bot_command(page, self.bot_command)
-                    await asyncio.sleep(random.randint(1, 5))
+                    for i in range(total_prompts):
+                        prompt = self.PROMPTS[i]
+                        logger.info("Entering the specified bot command.")
+                        await send_bot_command(page, self.bot_command)
+                        await asyncio.sleep(random.randint(1, 5))
 
-                    logger.info("Submit command.")
-                    await generate_prompt_and_submit_command(page, prompt)
-                    await asyncio.sleep(random.randint(1, 5))
+                        logger.info("Submit command.")
+                        await generate_prompt_and_submit_command(page, prompt)
+                        await asyncio.sleep(random.randint(1, 5))
 
-                    logger.info("Wait and select upscale options.")
-                    await wait_and_select_upscale_options(
-                        page,
-                        number_of_images=int(
-                            os.environ.get("NUMBER_OF_UPSCALED_IMAGES")
-                        ),
-                    )
-                    await asyncio.sleep(random.randint(1, 5))
+                        logger.info("Wait and select upscale options.")
+                        await wait_and_select_upscale_options(
+                            page,
+                            number_of_images=int(
+                                os.environ.get("NUMBER_OF_UPSCALED_IMAGES")
+                            ),
+                        )
+                        await asyncio.sleep(random.randint(1, 5))
 
-                    if self.upscale:
-                        await wait_and_select_super_upscale_options(
-                            page, number_of_images=1
+                        if self.upscale:
+                            await wait_and_select_super_upscale_options(
+                                page, number_of_images=1
+                            )
+
+                        logger.info("Download upscaled images.")
+                        await download_upscaled_images(
+                            page,
+                            prompt,
+                            number_of_images=int(
+                                os.environ.get("NUMBER_OF_UPSCALED_IMAGES")
+                            ),
+                            sequence_number=i + 1,
+                            output_dir=self.output_dir,
+                            timeout=int(os.environ.get("WAIT_FOR_DOWNLOAD_TIMEOUT", 600))
                         )
 
-                    logger.info("Download upscaled images.")
-                    await download_upscaled_images(
-                        page,
-                        prompt,
-                        number_of_images=int(
-                            os.environ.get("NUMBER_OF_UPSCALED_IMAGES")
-                        ),
-                        sequence_number=i + 1,
-                        output_dir=self.output_dir,
-                        timeout=int(os.environ.get("WAIT_FOR_DOWNLOAD_TIMEOUT", 600))
-                    )
+                        logger.info(f"Iteration {i+1} completed.")
+                        self.progress.emit((i + 1) * 100 // total_prompts)
+                        
+                        if i + 1 == total_prompts:
+                            break
+                        random_sleep()
 
-                    logger.info(f"Iteration {i+1} completed.")
-                    self.progress.emit((i + 1) * 100 // total_prompts)
-                    
-                    if i + 1 == total_prompts:
-                        self.completed.emit("✅ Success", "All images have been processed successfully!")
-                    random_sleep()
+                except Exception as e:
+                    # logger.error(f"Error occurred: {e} while executing the main function.")
+                    # self.completed.emit("❌ Error", f"An error occurred while processing: {str(e)}")
+                    raise e
+                finally:
+                    if page:
+                        try:
+                            await page.close()
+                            logger.info("Page closed successfully.")
+                        except Exception as e:
+                            logger.error(f"Error closing page: {e}")
+                    try:
+                        await browser.close()
+                        logger.info("Browser closed successfully.")
+                    except Exception as e:
+                        logger.error(f"Error closing browser: {e}")
 
         except Exception as e:
-            # logger.error(f"Error occurred: {e} while executing the main function.")
-            # self.completed.emit("❌ Error", f"An error occurred while processing: {str(e)}")
+            # logger.error(f"Error in process_file_async: {e}")
+            # self.completed.emit("❌ Error", f"An error occurred: {str(e)}")
             raise e
-        finally:
-            if browser:
-                await browser.close()
 
     async def write_to_file(self, filename, content):
         """Asynchronously writes content to a file."""
