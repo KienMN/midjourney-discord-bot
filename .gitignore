@@ -1,6 +1,6 @@
 .env
 __pycache__
-output
+output*
 build
 dist
 .pyarmor
