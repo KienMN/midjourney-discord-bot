@@ -4,3 +4,4 @@ output
 build
 dist
 .pyarmor
+logs

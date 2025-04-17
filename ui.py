@@ -2,6 +2,7 @@ import asyncio
 import os
 import random
 import sys
+from datetime import datetime
 
 from dotenv import load_dotenv
 from loguru import logger
@@ -32,6 +33,37 @@ from utils import (
 load_dotenv()
 
 
+def configure_logging():
+    """Configure logging with a unique filename for each run."""
+    # Create logs directory if it doesn't exist
+    os.makedirs("logs", exist_ok=True)
+    
+    # Generate unique filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file = f"logs/midjourney_bot_{timestamp}.log"
+    
+    # Remove default handler and add file handler with proper formatting
+    logger.remove()
+    logger.add(
+        log_file,
+        rotation="1 day",
+        retention="7 days",
+        level="INFO",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        backtrace=True,
+        diagnose=True
+    )
+    logger.add(
+        lambda msg: print(msg),
+        level="INFO",
+        format="<green>{time:YYYY-MM-DD HH:mm:ss.SSS}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
+        backtrace=True,
+        diagnose=True
+    )
+    
+    logger.info(f"Logging configured. Log file: {log_file}")
+
+
 class FileProcessor(QThread):
     progress = pyqtSignal(int)
     completed = pyqtSignal()
@@ -46,20 +78,23 @@ class FileProcessor(QThread):
         self.PROMPTS = []
 
     def run(self):
-        with open(self.input_file, "r") as f:
-            line = f.readline()
-            while line:
-                if line.strip():
-                    self.PROMPTS.append(line.strip())
+        try:
+            with open(self.input_file, "r") as f:
                 line = f.readline()
-        # logger.info(f"PROMPTS: {self.PROMPTS}")
-        logger.info(f"Channel URL: {self.channel_url}")
-        if len(self.PROMPTS) != 0:
-            asyncio.run(
-                self.process_file_async()
-            )  # Run the async function inside the thread
-        else:
-            logger.error("No prompts found in the input file.")
+                while line:
+                    if line.strip():
+                        self.PROMPTS.append(line.strip())
+                    line = f.readline()
+            logger.info(f"Channel URL: {self.channel_url}")
+            if len(self.PROMPTS) != 0:
+                asyncio.run(
+                    self.process_file_async()
+                )  # Run the async function inside the thread
+            else:
+                logger.error("No prompts found in the input file.")
+                self.completed.emit()
+        except Exception as e:
+            logger.exception("Error in FileProcessor.run()")  # This will log the full traceback
             self.completed.emit()
 
     async def process_file_async(self):
@@ -137,6 +172,7 @@ class FileProcessor(QThread):
 class TextFileProcessorApp(QWidget):
     def __init__(self):
         super().__init__()
+        configure_logging()  # Configure logging when UI starts
         self.init_ui()
 
     def init_ui(self):
