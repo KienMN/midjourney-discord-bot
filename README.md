@@ -76,8 +76,9 @@ pyarmor gen -r --pack onefile -b <MAC address> ui.py
 ```
 
 Note:
-- If you do not want to lock application for a specific computer, omit `-b <MAC address>` in the above command.
 - Clean the folder (delete build files) before starting building a new EXE file.
+- Update value in `.env` file if necessary.
+- If you do not want to lock application for a specific computer, omit `-b <MAC address>` in the above command.
 
 #### Use EXE file
 - Run chrome in debugging mode by typing this command in
